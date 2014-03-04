@@ -21,3 +21,5 @@ logfile = "/var/log/fomo.log"
 check_warehouse_delay = 30
 database_recheck_time = 30
 database_retry_attempts = 30
+
+print "config file successfully read"

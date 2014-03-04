@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""FOMOphobia is a network-connected installation that immerses the viewer in a visualization of the artist’s real-time social networking anxiety, sounding alarms and keeping count of unhandled content."""
+"""FOMOphobia is a network-connected installation that immerses the viewer in a visualization of the artist's real-time social networking anxiety, sounding alarms and keeping count of unhandled content."""
  
 __appname__ = "fomofetch.py"
 __author__  = "Wes Modes (modes.io)"
