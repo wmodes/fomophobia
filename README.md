@@ -47,18 +47,21 @@ the message, sms, email, or tweet would be displayed.
 Software
 ---
 **Organization**
+
 * fomoclient runs on clients; retrieves data from server via https
 * fomofetch runs on server; retrieves, processes data, and stores in mysql db
 * fomoserver runs on server; serves data to clients via https
 * A special gmail account is used as a Data Warehouse
 
 **Content Data Storage**
+
 * Database app serves data through CGI (or node.js) and https
 * System has to track state to ensure multiple installations can draw from database without conflict
 * FOMOclient is responsible for remembering state
 * FOMOclient specifies last content ID retrieved (+1) and type of content needed
 
 **Display and timing**
+
 * FOMOclient retrieves unread count
     * If new count is greater than old count, change and flash numerical display and ring bell.
     * If new count is less than or equal old count, change numerical display
@@ -69,6 +72,7 @@ Software
     * End of queued content is held briefly then blanks
 
 **Pacing**
+
 To provide interesting pacing as data is placed in the data store, clients get each message 
 one by one:  1) check every X seconds for new content, 2) get one message, 3) increment 
 the counter by one 4) ring the bell to announce new content, 5) display the content on the 
@@ -76,6 +80,7 @@ alpha LED, 6) wait a delay between 0 and Z second, and 7) immediately, check for
 lapsing into (1) if no content is available.  
 
 **Garbage Collection**
+
 The FOMOserver immediately deletes content from the Data Warehouse as soon as it retreives it. The
 fomoserver deletes content over a fixed age.
 
@@ -88,12 +93,14 @@ router.
 Clients
 ---
 **Self-Test**
+
 When clients power up, they display a visible self-test:
 * wifi network status
 * outside connection status
 * connection to server status
 
 **Access to clients**
+
 With this configuration, the fomo clients are assigned DHCP by the WAP router, so there is no telling how
 they will be IP'd. One way to find likely candidates is to
 
@@ -104,6 +111,7 @@ where I found them assigned as a suspicious block of 5 ajoining IPs.
 They are accessible via ssh.
 
 **Logs**
+
 The clients (and the server) write their logs to /var/log/fomo.log
 
 Installation
