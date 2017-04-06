@@ -90,27 +90,37 @@ def init_db_conx(host,port,user,password,dbname):
         see _mysql_exceptions
     """
     # connect to database
+    db_connect_flag = False
     for i in range(config.database_retry_attempts):
         logger.info("Attempting to connect to MySQL database")
         try:
             db=MySQLdb.connect(host,user,password,dbname)
             cursor = db.cursor()
             if cursor:
-                return db,cursor
+                db_connect_flag = True
+                break
         except MySQLdb.Error or MySQLdb.Warning as e:
             logger.exception("Mysql exception: "+str(e))
         logger.info("Waiting for database")
         time.sleep(config.database_recheck_time)
-    logger.info("Unable to connect to MySQL after "+database_retry_attempts+" tries")
-
+    if not db_connect_flag:
+        logger.info("Unable to connect to MySQL after "+database_retry_attempts+" tries")
+        return None
+    else:
+        logger.info("Database connection successful")
 
     # Create table as per requirement
-    sql = """CREATE TABLE IF NOT EXISTS messages (
+    sql = "SHOW TABLES LIKE 'messages'"
+    cursor.execute(sql)
+    result = cursor.fetchone()
+    if not result:
+        sql = """CREATE TABLE IF NOT EXISTS messages (
             msgid SERIAL PRIMARY KEY,
             type CHAR(16) NOT NULL,
             fetched TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             message text CHARACTER SET utf8 NOT NULL DEFAULT '')"""
-    cursor.execute(sql)
+        cursor.execute(sql)
+        logger.info("Table 'messages' did not exist. Creatingi it.")
 
     # Create table as per requirement
     sql = "SHOW TABLES LIKE 'count'"
@@ -123,9 +133,11 @@ def init_db_conx(host,port,user,password,dbname):
                     ON UPDATE CURRENT_TIMESTAMP,
                 count INT NOT NULL DEFAULT 0)"""
         cursor.execute(sql)
-        for type in config.types:
+        logger.info("Table 'count' did not exist. Creatingi it.")
+        for msg_type in config.types:
             sql = """INSERT INTO count (type, count) VALUES (%s, %s)"""
-            cursor.execute(sql, (type, 0))
+            cursor.execute(sql, (msg_type, 0))
+        logger.info("Adding 'type' records into table 'count'")
 
     # Create table as per requirement
     sql = "SHOW TABLES LIKE 'clients'"
@@ -138,9 +150,11 @@ def init_db_conx(host,port,user,password,dbname):
                 reported TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP 
                     ON UPDATE CURRENT_TIMESTAMP)"""
         cursor.execute(sql)
-        for type in config.types:
+        logger.info("Table 'clients' did not exist. Creatingi it.")
+        for msg_type in config.types:
             sql = """INSERT INTO clients (type) VALUES (%s)"""
-            cursor.execute(sql, (type))
+            cursor.execute(sql, (msg_type,))
+        logger.info("Adding 'type' records into table 'clients'")
     return(db,cursor)
 
 
@@ -176,7 +190,7 @@ def fetch_warehouse_content(host,port,user,password):
     messages = [parser.Parser().parsestr(msgParts) for msgParts in messages]
     return messages
 
-def store_content(cursor,messages):
+def store_content(db, cursor, messages):
     """Store content in database
     Args:
         messages: a set of mail message objects
@@ -185,15 +199,15 @@ def store_content(cursor,messages):
         type_pattern = "^" + "|^".join(config.types)
         subject, encoding = email.Header.decode_header(message['subject'])[0]
         match = re.search(type_pattern,subject,re.IGNORECASE)
-        if match:                      
-            type = match.group()
+        if match:
+            msg_type = match.group()
         else:
-            type = "unknown"
+            msg_type = "unknown"
 
-        if type == "reader":
-            type = "rss"
-        if type == "gmail":
-            type = "email"
+        if msg_type == "reader":
+            msg_type = "rss"
+        if msg_type == "gmail":
+            msg_type = "email"
 
         for part in message.walk():
             txtbody = ""
@@ -211,22 +225,25 @@ def store_content(cursor,messages):
 
         sql = "INSERT INTO messages(type,message) VALUES(%s, %s)"
         try:
-            cursor.execute(sql, (type, body))
-            logger.info("Processing "+subject)
-            store_count(cursor,type)
+            logger.info("Adding to db: Type: %s Subject: %s" % (msg_type, subject))
+            logger.info("Mysql cmd: " + sql % (msg_type, body))
+            cursor.execute(sql, (msg_type, body))
+            store_count(cursor, msg_type)
+            db.commit()
         #except mysql_exceptions.OperationalError as e:
         except MySQLdb.OperationalError as e:
+            logger.error("Mysql error: " + sql)
             logger.exception("Mysql exception: "+str(e))
             return
 
-def store_count(cursor,type="unknown",count=-1):
+def store_count(cursor, msg_type="unknown",count=-1):
     """Store count in database
     Args:
-        type (string): describes the type of count
+        msg_type (string): describes the type of count
         count (int): the new count (default is -1 indicating it should be incremented by one)
     """
     sql = "SELECT count FROM count WHERE type=%s"
-    cursor.execute(sql, (type))
+    cursor.execute(sql, (msg_type,))
     result = cursor.fetchone()
     # if the record exists (as it's supposed to)
     if result:
@@ -236,12 +253,12 @@ def store_count(cursor,type="unknown",count=-1):
             count += 1
         # update record
         sql = "UPDATE count SET count=%s WHERE type=%s"
-        cursor.execute(sql, (count,type))
+        cursor.execute(sql, (count, msg_type))
     # if the record doesn't exist
     else:
         # create record
         sql = "INSERT INTO count (type,count) VALUES(%s, %s)"
-        cursor.execute(sql, (type, count))
+        cursor.execute(sql, (msg_type, count))
 
 
 def get_count_from_twitter():
@@ -293,8 +310,8 @@ def run():
     while True:
         messages=fetch_warehouse_content(config.pop_host,config.pop_port,config.pop_account,config.pop_password)
         if messages:
-            store_content(cursor,messages)
-            logger.info("Fetch: ", messages)
+            store_content(db, cursor, messages)
+            logger.info("Fetch: %i messages" % len(messages))
         else:
             logger.info("Fetch: No messages")
         time.sleep(config.check_warehouse_delay)
