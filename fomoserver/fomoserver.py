@@ -71,7 +71,7 @@ def init_db_conx(host,port,user,password,dbname):
     # connect to database
     db=MySQLdb.connect(host,user,password,dbname)
     cursor = db.cursor()
-    logging.info("Successful database connection")
+    #logging.info("Successful database connection")
 
     # Create table as per requirement
     sql = "SHOW TABLES LIKE 'messages'"
@@ -247,6 +247,7 @@ def receive_report(db, cursor,q):
     """
     type = q['type']
     ip = q['ip']
+    logging.info("Report received from %s type %s" % (ip, type))
     sql = "SELECT ip FROM clients WHERE type=%s"
     cursor.execute(sql, (type))
     result = cursor.fetchone()
@@ -275,17 +276,21 @@ def serve_status(db, cursor):
         statusline = "DBCONX: FAIL  "
     print statusline
 
-    print "\nREPORTS BACK TO MOTHERSHIP:"
+    print "\nREPORTED BACK TO MOTHERSHIP:"
     sql = "SELECT ip,type,reported FROM clients"
     if not cursor.execute(sql):
         print "No client connections"
-    row = cursor.fetchone()
-    while row is not None:
+    print "\nIP Addresss   Cnt  Service   Last_chkin"
+    rows = cursor.fetchmany(10)
+    for row in rows:
+    #while row is not None:
         #print "ROW: ",row
-        (ip,type,reported) = row
+        (ip, msg_type, reported) = row
+        count = retrieve_count(db, cursor, msg_type)
         if ip != '0.0.0.0':
-            print ip," ",type," ",reported
-        row = cursor.fetchone()
+            print "%s  %3i  %8s  %s" % (ip, 
+                    count, msg_type, reported)
+        #row = cursor.fetchone()
 
 def serve_help():
     """Serve count to requestor
@@ -318,12 +323,13 @@ def main():
     #app.run()
     db,cursor=init_db_conx(config.db_host,config.db_port,config.db_user,config.db_password,config.db_name)
 
-    q = {}   # Declares as a dict
-    q['request'] = "help"
-    q['msgid'] = 0
-    q['type'] = "all"
-    q['clientid'] = 0
-    q['count'] = 0
+    q = {
+        'request': "help",
+        'msgid': 0,
+        'type': "all",
+        'clientid': 0,
+        'count': 0
+    }
 
     urlq = cgi.FieldStorage()
     for i in urlq.keys():
@@ -331,14 +337,16 @@ def main():
 
     #type_pattern = "^" + "|^".join(config.types)
 
+    #print "debug", q
+
     if q['request'] == "help":
         serve_help()
     elif q['request'] == "content":
-        serve_content(db, cursor,q)
+        serve_content(db, cursor, q)
     elif q['request'] == "count":
-        serve_count(db, cursor,q)
+        serve_count(db, cursor, q)
     elif q['request'] == "set":
-        set_count(db, cursor,q)
+        set_count(db, cursor, q)
     elif q['request'] == "status":
         serve_status(db, cursor)
     elif q['request'] == "report":
