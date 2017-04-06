@@ -1,5 +1,5 @@
 server = "apps.modes.io"
-baseurl = "https://apps.modes.io/fomo/fomoserver.py"
+baseurl = "http://apps.modes.io/fomo/fomoserver.py"
 user = "fomo"
 password = "Ih@t3Twitter"
 
