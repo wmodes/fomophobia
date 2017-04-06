@@ -18,5 +18,5 @@ types = ["email",
     "facebook",
     "unknown",
     "all"]
-logfile = "/var/log/fomo.log"
+logfile = "/var/log/fomophobia/fomoserver.log"
 check_warehouse_delay = 120

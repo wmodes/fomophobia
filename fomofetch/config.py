@@ -17,7 +17,7 @@ types = ["email",
     "reader",
     "facebook",
     "unknown"]
-logfile = "/var/log/fomo.log"
+logfile = "/var/log/fomophobia/fomofetch.log"
 check_warehouse_delay = 30
 database_recheck_time = 30
 database_retry_attempts = 30

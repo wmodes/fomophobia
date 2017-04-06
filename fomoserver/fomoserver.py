@@ -1,18 +1,18 @@
-#!/usr/bin/env python
+#!/usr/bin/python
 # -*- coding: utf-8 -*-
 """FOMOphobia is a network-connected installation that immerses the viewer in a visualization of the artist’s real-time social networking anxiety, sounding alarms and keeping count of unhandled content."""
- 
+
 __appname__ = "fomoserver.py"
 __author__  = "Wes Modes (modes.io)"
 __version__ = "0.1pre0"
 __license__ = "GNU GPL 3.0 or later"
- 
+
 # imports
 import config
 import logging
 import MySQLdb
 import re
-import warnings 
+import warnings
 import urlparse
 #import web
 import cgi
@@ -23,7 +23,7 @@ warnings.filterwarnings('ignore')
 
 # init things
 log = logging.getLogger(__name__)
- 
+
 # constants
 content_table = "messages"
 count_table = "count"
@@ -42,10 +42,10 @@ def options_and_logging():
     parser.add_option('-q', '--quiet', action="count", dest="quiet",
         default=0, help="Decrease the verbosity. Use twice for extra effect")
     #Reminder: %default can be used in help strings.
- 
+
     # Allow pre-formatted descriptions
     parser.formatter.format_description = lambda description: description
- 
+
     opts, args  = parser.parse_args()
 
     # Set up clean logging to stderr
@@ -64,51 +64,62 @@ def init_db_conx(host,port,user,password,dbname):
         port: database port number
         user: database user
         password: database user password
-        database: mysql database 
+        database: mysql database
     Raises:
         see _mysql_exceptions
     """
     # connect to database
     db=MySQLdb.connect(host,user,password,dbname)
     cursor = db.cursor()
+    logging.info("Successful database connection")
 
     # Create table as per requirement
-    sql = """CREATE TABLE IF NOT EXISTS messages (
-            msgid SERIAL PRIMARY KEY,
-            type CHAR(16) NOT NULL,
-            fetched TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            message text CHARACTER SET utf8 NOT NULL DEFAULT '')"""
+    sql = "SHOW TABLES LIKE 'messages'"
     cursor.execute(sql)
+    result = cursor.fetchone()
+    if not result:
+        logging.info("Table 'messages' absent. Creating.")
+        sql = """CREATE TABLE IF NOT EXISTS messages (
+                msgid SERIAL PRIMARY KEY,
+                type CHAR(16) NOT NULL,
+                fetched TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                message text CHARACTER SET utf8 NOT NULL DEFAULT '')"""
+        cursor.execute(sql)
+        db.commit()
 
     # Create table as per requirement
     sql = "SHOW TABLES LIKE 'count'"
     cursor.execute(sql)
     result = cursor.fetchone()
     if not result:
+        logging.info("Table 'count' absent. Creating.")
         sql = """CREATE TABLE IF NOT EXISTS count (
                 type CHAR(16) NOT NULL UNIQUE,
-                fetched TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP 
+                fetched TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
                     ON UPDATE CURRENT_TIMESTAMP,
                 count INT NOT NULL DEFAULT 0)"""
         cursor.execute(sql)
         for type in config.types:
             sql = """INSERT INTO count (type, count) VALUES (%s, %s)"""
             cursor.execute(sql, (type, 0))
+        db.commit()
 
     # Create table as per requirement
     sql = "SHOW TABLES LIKE 'clients'"
     cursor.execute(sql)
     result = cursor.fetchone()
     if not result:
+        logging.info("Table 'clients' absent. Creating.")
         sql = """CREATE TABLE IF NOT EXISTS clients (
                 type CHAR(16) NOT NULL UNIQUE,
                 ip char(24) NOT NULL DEFAULT '0.0.0.0',
-                reported TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP 
+                reported TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
                     ON UPDATE CURRENT_TIMESTAMP)"""
         cursor.execute(sql)
         for type in config.types:
             sql = """INSERT INTO clients (type) VALUES (%s)"""
             cursor.execute(sql, (type))
+        db.commit()
     return(db,cursor);
 
 
@@ -161,20 +172,20 @@ def retrieve_content(dbcursor,type,msgid):
     if r:
         return r;
 
-def serve_content(cursor,q):
+def serve_content(db, cursor,q):
     """Serve content to requestor
     Args:
         q: query values from url as a dict
         cursor: the database cursor object
     """
-    r = retrieve_content(cursor,q['type'],q['msgid'])
+    r = retrieve_content(db, cursor,q['type'],q['msgid'])
     if r:
        print r[0],"\n",r[1]
-    
+
     else:
         print "NO RESULTS."
 
-def retrieve_count(cursor,type):
+def retrieve_count(db, cursor,type):
     """Get count from the database
     Args:
         cursor: the database cursor object
@@ -186,20 +197,20 @@ def retrieve_count(cursor,type):
     if r:
         return r[0];
 
-def serve_count(cursor,q):
+def serve_count(db, cursor,q):
     """Serve count to requestor
     Args:
         q: query values from url as a dict
         cursor: the database cursor object
     """
-    r = retrieve_count(cursor,q['type'])
+    r = retrieve_count(db, cursor,q['type'])
     if r:
        print r
-    
+
     else:
         print 0
 
-def set_count(cursor,q):
+def set_count(db, cursor,q):
     """Set count in the database
     Args:
         q: query values from url as a dict
@@ -219,14 +230,16 @@ def set_count(cursor,q):
         # update record
         sql = "UPDATE count SET count=%s WHERE type=%s"
         cursor.execute(sql, (count,type))
+        db.commit()
     # if the record doesn't exist
     else:
         # create record
         sql = "INSERT INTO count (type,count) VALUES(%s, %s)"
         cursor.execute(sql, (type, count))
+        db.commit()
     print "OK"
 
-def receive_report(cursor,q):
+def receive_report(db, cursor,q):
     """Receive report from client and save in database
     Args:
         cursor: the database cursor object
@@ -242,14 +255,16 @@ def receive_report(cursor,q):
         # create record
         sql = "INSERT INTO clients (type,ip) VALUES(%s, %s)"
         cursor.execute(sql,(type,ip))
+        db.commit()
     # if the record exists
     else:
         # update record
         sql = "UPDATE clients SET ip=%s WHERE type=%s"
         cursor.execute(sql,(ip,type))
+        db.commit()
     print "OK"
 
-def serve_status(cursor):
+def serve_status(db, cursor):
     """Serve count to requestor
     Args:
         cursor: the database cursor object
@@ -263,7 +278,7 @@ def serve_status(cursor):
     print "\nREPORTS BACK TO MOTHERSHIP:"
     sql = "SELECT ip,type,reported FROM clients"
     if not cursor.execute(sql):
-        print "SQL Execute FAIL"
+        print "No client connections"
     row = cursor.fetchone()
     while row is not None:
         #print "ROW: ",row
@@ -295,8 +310,7 @@ def encode_data():
         None
     """
 
-if __name__ == "__main__":
-
+def main():
     print "Content-type: text/plain"
     print
 
@@ -316,20 +330,22 @@ if __name__ == "__main__":
         q[i] = urlq[i].value
 
     #type_pattern = "^" + "|^".join(config.types)
-    
+
     if q['request'] == "help":
         serve_help()
     elif q['request'] == "content":
-        serve_content(cursor,q)
+        serve_content(db, cursor,q)
     elif q['request'] == "count":
-        serve_count(cursor,q)
+        serve_count(db, cursor,q)
     elif q['request'] == "set":
-        set_count(cursor,q)
+        set_count(db, cursor,q)
     elif q['request'] == "status":
-        serve_status(cursor)
+        serve_status(db, cursor)
     elif q['request'] == "report":
-        receive_report(cursor,q)
+        receive_report(db, cursor, q)
 
     cursor.close()
 
 
+if __name__ == "__main__":
+    main()
