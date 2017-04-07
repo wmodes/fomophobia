@@ -18,7 +18,11 @@ import urlparse
 import cgi
 #import cgitb; cgitb.enable()  # for troubleshooting
 
-logging.basicConfig(filename=config.logfile,level=logging.INFO)
+# create logger 
+logger = logging.getLogger(__appname__)
+logging.basicConfig(filename=config.logfile,level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 warnings.filterwarnings('ignore')
 
 # init things
@@ -157,7 +161,7 @@ def parse_url_encoding(url):
     query = urlparse.parse_qsl(parsed_utl.query)
     return query;
 
-def retrieve_content(dbcursor,type,msgid):
+def retrieve_content(dbcursor, msgtype, msgid):
     """Get content from the database
     Args:
         dbcursor: the database cursor object
@@ -167,35 +171,43 @@ def retrieve_content(dbcursor,type,msgid):
         Returns a string that represents the message body
     """
     sql = "SELECT msgid,message FROM messages WHERE type=%s AND msgid > %s LIMIT 0, 1"
-    dbcursor.execute(sql, (type,msgid))
+    dbcursor.execute(sql, (msgtype, msgid))
     r = dbcursor.fetchone()
     if r:
         return r;
 
-def serve_content(db, cursor,q):
+def serve_content(db, cursor, q):
     """Serve content to requestor
     Args:
         q: query values from url as a dict
         cursor: the database cursor object
     """
-    r = retrieve_content(db, cursor,q['type'],q['msgid'])
+    msgtype = q['type']
+    msgid = q['msgid']
+    logging.info("Retreive content type %s msgid %s" % (msgtype, msgid))
+    r = retrieve_content(cursor, msgtype, msgid)
     if r:
        print r[0],"\n",r[1]
 
     else:
         print "NO RESULTS."
 
-def retrieve_count(db, cursor,type):
+def retrieve_count(cursor,type):
     """Get count from the database
     Args:
         cursor: the database cursor object
         type: the type of record
     """
     sql = "SELECT count FROM count WHERE type=%s"
-    cursor.execute(sql, (type))
-    r = cursor.fetchone()
+    try:
+        cursor.execute(sql, (type))
+        r = cursor.fetchone()
+    except:
+        pass
     if r:
-        return r[0];
+        return r[0]
+    else:
+        return 0
 
 def serve_count(db, cursor,q):
     """Serve count to requestor
@@ -203,12 +215,12 @@ def serve_count(db, cursor,q):
         q: query values from url as a dict
         cursor: the database cursor object
     """
-    r = retrieve_count(db, cursor,q['type'])
-    if r:
-       print r
-
-    else:
-        print 0
+    msgtype = q['type']
+    r = retrieve_count(cursor, msgtype)
+    if not r:
+       r = 0
+    print r
+    logging.info("Serve count for type %s = %s" % (msgtype, r))
 
 def set_count(db, cursor,q):
     """Set count in the database
@@ -280,16 +292,17 @@ def serve_status(db, cursor):
     sql = "SELECT ip,type,reported FROM clients"
     if not cursor.execute(sql):
         print "No client connections"
-    print "\nIP Addresss   Cnt  Service   Last_chkin"
+    print "\n%15s  %8s  %-19s  %3s" % ("IP Address", "Service",
+               "Last Checkin", "Cnt")
     rows = cursor.fetchmany(10)
     for row in rows:
     #while row is not None:
         #print "ROW: ",row
-        (ip, msg_type, reported) = row
-        count = retrieve_count(db, cursor, msg_type)
+        (ip, msgtype, reported) = row
+        count = retrieve_count(cursor, msgtype)
         if ip != '0.0.0.0':
-            print "%s  %3i  %8s  %s" % (ip, 
-                    count, msg_type, reported)
+            print "%15s  %8s  %19s  %3i" % (ip, 
+                    msgtype, reported, count)
         #row = cursor.fetchone()
 
 def serve_help():
